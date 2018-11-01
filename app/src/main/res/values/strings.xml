@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">АллатРа Радио</string>
+    <string name="play">Играть</string>
+    <string name="stop">Стоп</string>
+    <string name="classic">Классическая музыка</string>
+    <string name="radio">Радио</string>
+    <string name="error_message">Ваше устройство может работать не корректно! Пожалуйста, напишите в отзыве модель Вашего смартфона!</string>
+    <string name="attantion">Внимание</string>
+    <string name="yes">Хорошо</string>
+    <string name="message_text">Это разрешение нужно для нормальной работы во время звонков</string>
+</resources>

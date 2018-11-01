@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">АллатРа Радио</string>
+    <string name="attantion">Achtung</string>
+    <string name="classic">Klassische Musik</string>
+    <string name="error_message">Ihr Gerät</string>
+    <string name="play">Spielen</string>
+    <string name="stop">"Halt "</string>
+    <string name="radio">"Radio "</string>
+    <string name="yes">OK</string>
+    <string name="message_text">Diese Erlaubnis muss gut mit Radio-Wiedergabe mit einem eingehenden Anruf arbeiten.</string>
+</resources>

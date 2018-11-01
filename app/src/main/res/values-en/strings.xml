@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AllatRa Radio</string>
+    <string name="attantion">Attantion</string>
+    <string name="classic">Classic music</string>
+    <string name="error_message">Yours device works incorrect. Send us an email, please!</string>
+    <string name="message_text">This permission needs well work with playback radio with an incoming call.</string>
+    <string name="play">Play</string>
+    <string name="radio">Radio</string>
+    <string name="stop">Stop</string>
+    <string name="yes">Ok</string>
+</resources>
