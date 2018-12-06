@@ -2,13 +2,22 @@ package org.allatra.radio;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.database.Cursor;
 import android.media.AudioManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.provider.MediaStore;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AlertDialog;
@@ -19,8 +28,10 @@ import android.view.View;
 import android.widget.CheckBox;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 import java.io.IOException;
+import java.util.ArrayList;
 
 import wseemann.media.FFmpegMediaPlayer;
 
@@ -34,14 +45,17 @@ public class MainActivity extends AppCompatActivity
     private ImageButton buttonStopPlay;
     private CheckBox checkRadio;
     private CheckBox checkClassic;
-    private static final String RADIO_STREAM = "http://94.23.36.117:5551/stream";
-    private static final String CLASSIC_STREAM = "http://eu6.fastcast4u.com:5551/classic";
-    private FFmpegMediaPlayer mediaPlayer;
+    public static final String RADIO_STREAM = "http://94.23.36.117:5551/stream";
+    public static final String CLASSIC_STREAM = "http://eu6.fastcast4u.com:5551/classic";
+    public static final String Broadcast_PLAY_NEW_AUDIO = "org.allatra.radio.audioplayer.PlayNewAudio";
+    private FFmpegMediaPlayer fFmpegMediaPlayer;
+
+    private AudioPlayerService audioPlayerService;
+    boolean serviceBound = false;
+    private ArrayList<Audio> audioList;
 
     //Handle incoming phone calls
     private boolean ongoingCall = false;
-    private PhoneStateListener phoneStateListener;
-    private TelephonyManager telephonyManager;
     private int permissionCheck;
     private AlertDialog.Builder dialogFragment;
 
@@ -54,17 +68,62 @@ public class MainActivity extends AppCompatActivity
         if (permissionCheck == 1) callStateListener();
         else permission();
 
+//        loadAudio();
+        //play the first audio in the ArrayList
+//        playAudio(audioList.get(0).getData());
+
+    }
+
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        startService();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        releaseMP();
+        if (serviceBound) {
+            unbindService(serviceConnection);
+            //service is active
+            audioPlayerService.stopSelf();
+        }
+//        releaseMP();
+    }
+
+    @Override
+    protected void onPause() {
+//        fFmpegMediaPlayer.stop();
+//        fFmpegMediaPlayer.release();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+//        if (checkRadio.isChecked())
+//            startPlaying();
+//            fFmpegMediaPlayer = new FFmpegMediaPlayer();
+//        fFmpegMediaPlayer.setLooping(false);
+//        fFmpegMediaPlayer.start();
+        super.onResume();
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        savedInstanceState.putBoolean("ServiceState", serviceBound);
+        super.onSaveInstanceState(savedInstanceState);
+    }
+
+    @Override
+    public void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        serviceBound = savedInstanceState.getBoolean("ServiceState");
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode,
-                                           String permissions[], int[] grantResults) {
+                                           @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
             case MY_PERMISSIONS_REQUEST_READ_PHONE_STATE: {
                 // If request is cancelled, the result arrays are empty.
@@ -78,7 +137,6 @@ public class MainActivity extends AppCompatActivity
                     // functionality that depends on this permission.
                     dialogFragment.create();
                 }
-                return;
             }
 
             // other 'case' lines to check for other
@@ -117,17 +175,17 @@ public class MainActivity extends AppCompatActivity
 
     @SuppressLint("ShowToast")
     private void initializeUIElements() {
-        buttonPlay = (ImageButton) findViewById(R.id.buttonPlay);
+        buttonPlay = findViewById(R.id.buttonPlay);
         buttonPlay.setOnClickListener(this);
         buttonPlay.setEnabled(true);
 
-        buttonStopPlay = (ImageButton) findViewById(R.id.buttonStopPlay);
+        buttonStopPlay = findViewById(R.id.buttonStopPlay);
         buttonStopPlay.setEnabled(false);
         buttonStopPlay.setVisibility(View.INVISIBLE);
         buttonStopPlay.setOnClickListener(this);
 
-        checkRadio = (CheckBox) findViewById(R.id.chb_radio);
-        checkClassic = (CheckBox) findViewById(R.id.chb_classic);
+        checkRadio = findViewById(R.id.chb_radio);
+        checkClassic = findViewById(R.id.chb_classic);
         checkRadio.setChecked(true);
 
         permissionCheck = ContextCompat.checkSelfPermission(this,
@@ -145,15 +203,15 @@ public class MainActivity extends AppCompatActivity
 
         if (this.getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
             // Portrait Mode
-            ImageView background = (ImageView) findViewById(R.id.iv_portrait);
+            ImageView background = findViewById(R.id.iv_portrait);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                background.setBackground(getResources().getDrawable(R.drawable.back_land));
+                background.setBackground(getResources().getDrawable(R.drawable.back));
             } else {
-                background.setImageDrawable(getResources().getDrawable(R.drawable.back_land));
+                background.setImageDrawable(getResources().getDrawable(R.drawable.back));
             }
         } else {
             // Landscape Mode
-            ImageView background = (ImageView) findViewById(R.id.iv_land);
+            ImageView background = findViewById(R.id.iv_land);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
                 background.setBackground(getResources().getDrawable(R.drawable.back_land));
             } else {
@@ -164,16 +222,37 @@ public class MainActivity extends AppCompatActivity
     }
 
     public void onClick(View v) {
-        if (v == buttonPlay) {
-            startPlaying();
-        } else if (v == buttonStopPlay) {
-            stopPlaying();
-        }
+        if (serviceBound)
+            if (v == buttonPlay) {
+                if (checkRadio.isChecked()) {
+                    audioPlayerService.startPlayRadio();
+                } else {
+                    audioPlayerService.startPlayClassic();
+                }
+                buttonPlay.setVisibility(View.INVISIBLE);
+                buttonStopPlay.setVisibility(View.VISIBLE);
+                buttonStopPlay.setEnabled(true);
+                buttonPlay.setEnabled(false);
+
+                checkRadio.setEnabled(false);
+                checkClassic.setEnabled(false);
+//            startPlaying();
+            } else if (v == buttonStopPlay) {
+                audioPlayerService.stopMedia();
+
+                buttonStopPlay.setVisibility(View.INVISIBLE);
+                buttonPlay.setEnabled(true);
+                buttonPlay.setVisibility(View.VISIBLE);
+                buttonStopPlay.setEnabled(false);
+                checkClassic.setEnabled(true);
+                checkRadio.setEnabled(true);
+//            stopPlaying();
+            }
     }
 
     private void startPlaying() {
-        mediaPlayer = new FFmpegMediaPlayer();
-        mediaPlayer.setOnPreparedListener(new FFmpegMediaPlayer.OnPreparedListener() {
+        fFmpegMediaPlayer = new FFmpegMediaPlayer();
+        fFmpegMediaPlayer.setOnPreparedListener(new FFmpegMediaPlayer.OnPreparedListener() {
 
             @Override
             public void onPrepared(FFmpegMediaPlayer mp) {
@@ -181,7 +260,7 @@ public class MainActivity extends AppCompatActivity
             }
         });
 
-        mediaPlayer.setOnErrorListener(new FFmpegMediaPlayer.OnErrorListener() {
+        fFmpegMediaPlayer.setOnErrorListener(new FFmpegMediaPlayer.OnErrorListener() {
 
             @Override
             public boolean onError(FFmpegMediaPlayer mp, int what, int extra) {
@@ -192,11 +271,11 @@ public class MainActivity extends AppCompatActivity
 
         try {
             if (checkRadio.isChecked()) {
-                mediaPlayer.setDataSource(RADIO_STREAM);
+                fFmpegMediaPlayer.setDataSource(RADIO_STREAM);
             } else {
-                mediaPlayer.setDataSource(CLASSIC_STREAM);
+                fFmpegMediaPlayer.setDataSource(CLASSIC_STREAM);
             }
-            mediaPlayer.prepareAsync();
+            fFmpegMediaPlayer.prepareAsync();
         } catch (IllegalArgumentException e) {
             e.printStackTrace();
         } catch (SecurityException e) {
@@ -217,8 +296,8 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void stopPlaying() {
-        if (mediaPlayer.isPlaying())
-            mediaPlayer.stop();
+        if (fFmpegMediaPlayer.isPlaying())
+            fFmpegMediaPlayer.stop();
 
         buttonStopPlay.setVisibility(View.INVISIBLE);
         buttonPlay.setEnabled(true);
@@ -230,10 +309,10 @@ public class MainActivity extends AppCompatActivity
     }
 
     private void releaseMP() {
-        if (mediaPlayer != null) {
+        if (fFmpegMediaPlayer != null) {
             try {
-                mediaPlayer.release();
-                mediaPlayer = null;
+                fFmpegMediaPlayer.release();
+                fFmpegMediaPlayer = null;
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -246,29 +325,29 @@ public class MainActivity extends AppCompatActivity
         switch (focusChange) {
             case AudioManager.AUDIOFOCUS_GAIN:
                 // resume playback
-                if (mediaPlayer == null) startPlaying();
-                else if (!mediaPlayer.isPlaying()) mediaPlayer.start();
-                mediaPlayer.setVolume(1.0f, 1.0f);
+                if (fFmpegMediaPlayer == null) startPlaying();
+                else if (!fFmpegMediaPlayer.isPlaying()) fFmpegMediaPlayer.start();
+                fFmpegMediaPlayer.setVolume(1.0f, 1.0f);
                 break;
 
             case AudioManager.AUDIOFOCUS_LOSS:
                 // Lost focus for an unbounded amount of time: stop playback and release media player
-                if (mediaPlayer.isPlaying()) mediaPlayer.stop();
-                mediaPlayer.release();
-                mediaPlayer = null;
+                if (fFmpegMediaPlayer.isPlaying()) fFmpegMediaPlayer.stop();
+                fFmpegMediaPlayer.release();
+                fFmpegMediaPlayer = null;
                 break;
 
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
                 // Lost focus for a short time, but we have to stop
                 // playback. We don't release the media player because playback
                 // is likely to resume
-                if (mediaPlayer.isPlaying()) mediaPlayer.pause();
+                if (fFmpegMediaPlayer.isPlaying()) fFmpegMediaPlayer.pause();
                 break;
 
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
                 // Lost focus for a short time, but it's ok to keep playing
                 // at an attenuated level
-                if (mediaPlayer.isPlaying()) mediaPlayer.pause();
+                if (fFmpegMediaPlayer.isPlaying()) fFmpegMediaPlayer.pause();
                 break;
         }
     }
@@ -294,9 +373,9 @@ public class MainActivity extends AppCompatActivity
 
     private void callStateListener() {
         // Get the telephony manager
-        telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
+        TelephonyManager telephonyManager = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
         //Starting listening for PhoneState changes
-        phoneStateListener = new PhoneStateListener() {
+        PhoneStateListener phoneStateListener = new PhoneStateListener() {
             @Override
             public void onCallStateChanged(int state, String incomingNumber) {
                 switch (state) {
@@ -304,17 +383,17 @@ public class MainActivity extends AppCompatActivity
                     //pause the MediaPlayer
                     case TelephonyManager.CALL_STATE_OFFHOOK:
                     case TelephonyManager.CALL_STATE_RINGING:
-                        if (mediaPlayer != null) {
-                            mediaPlayer.pause();
+                        if (fFmpegMediaPlayer != null) {
+                            fFmpegMediaPlayer.pause();
                             ongoingCall = true;
                         }
                         break;
                     case TelephonyManager.CALL_STATE_IDLE:
                         // Phone idle. Start playing.
-                        if (mediaPlayer != null) {
+                        if (fFmpegMediaPlayer != null) {
                             if (ongoingCall) {
                                 ongoingCall = false;
-                                mediaPlayer.start();
+                                fFmpegMediaPlayer.start();
                             }
                         }
                         break;
@@ -325,5 +404,75 @@ public class MainActivity extends AppCompatActivity
         // Listen for changes to the device call state.
         telephonyManager.listen(phoneStateListener,
                 PhoneStateListener.LISTEN_CALL_STATE);
+    }
+
+    private void playAudio(int audioIndex) {
+        //Check is service is active
+        if (!serviceBound) {
+            //Store Serializable audioList to SharedPreferences
+            StorageUtil storage = new StorageUtil(getApplicationContext());
+            storage.storeAudio(audioList);
+            storage.storeAudioIndex(audioIndex);
+
+            Intent playerIntent = new Intent(this, AudioPlayerService.class);
+            startService(playerIntent);
+            bindService(playerIntent, serviceConnection, Context.BIND_AUTO_CREATE);
+        } else {
+            //Store the new audioIndex to SharedPreferences
+            StorageUtil storage = new StorageUtil(getApplicationContext());
+            storage.storeAudioIndex(audioIndex);
+
+            //Service is active
+            //Send a broadcast to the service -> PLAY_NEW_AUDIO
+            Intent broadcastIntent = new Intent(Broadcast_PLAY_NEW_AUDIO);
+            sendBroadcast(broadcastIntent);
+        }
+    }
+
+    private void loadAudio() {
+        ContentResolver contentResolver = getContentResolver();
+
+        Uri uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+        String selection = MediaStore.Audio.Media.IS_MUSIC + "!= 0";
+        String sortOrder = MediaStore.Audio.Media.TITLE + " ASC";
+        Cursor cursor = contentResolver.query(uri, null, selection, null, sortOrder);
+
+        if (cursor != null && cursor.getCount() > 0) {
+            audioList = new ArrayList<>();
+            while (cursor.moveToNext()) {
+                String data = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.DATA));
+                String title = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.TITLE));
+                String album = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM));
+                String artist = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST));
+
+                // Save to audioList
+                audioList.add(new Audio(data, title, album, artist));
+            }
+        }
+        cursor.close();
+    }
+
+    //Binding this Client to the AudioPlayer Service
+    private ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            // We've bound to LocalService, cast the IBinder and get LocalService instance
+            AudioPlayerService.LocalBinder binder = (AudioPlayerService.LocalBinder) service;
+            audioPlayerService = binder.getService();
+            serviceBound = true;
+
+            Toast.makeText(MainActivity.this, "Service Bound", Toast.LENGTH_SHORT).show();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            serviceBound = false;
+        }
+    };
+
+    private void startService() {
+        Intent playerIntent = new Intent(this, AudioPlayerService.class);
+        startService(playerIntent);
+        bindService(playerIntent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
 }
