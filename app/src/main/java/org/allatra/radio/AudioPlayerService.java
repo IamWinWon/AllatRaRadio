@@ -8,16 +8,14 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.session.MediaSessionManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.media.MediaMetadataCompat;
+import androidx.core.app.NotificationCompat;
+
 import android.support.v4.media.session.MediaControllerCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.telephony.PhoneStateListener;
@@ -52,9 +50,7 @@ public class AudioPlayerService extends Service implements
     private TelephonyManager telephonyManager;
 
     //List of available Audio files
-    private ArrayList<Audio> audioList;
     private int audioIndex = -1;
-    private Audio activeAudio; //an object of the currently playing audio
 
     public static final String ACTION_PLAY = "org.allatra.radio.audioplayer.ACTION_PLAY";
     public static final String ACTION_PAUSE = "org.allatra.radio.audioplayer.ACTION_PAUSE";
@@ -233,9 +229,6 @@ public class AudioPlayerService extends Service implements
         //unregister BroadcastReceivers
         unregisterReceiver(becomingNoisyReceiver);
         unregisterReceiver(playNewAudio);
-
-        //clear cached playlist
-        new StorageUtil(getApplicationContext()).clearCachedAudioPlaylist();
     }
 
     public class LocalBinder extends Binder {
@@ -363,16 +356,6 @@ public class AudioPlayerService extends Service implements
     private BroadcastReceiver playNewAudio = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-
-            //Get the new media index form SharedPreferences
-            audioIndex = new StorageUtil(getApplicationContext()).loadAudioIndex();
-            if (audioIndex != -1 && audioIndex < audioList.size()) {
-                //index is in a valid range
-                activeAudio = audioList.get(audioIndex);
-            } else {
-                stopSelf();
-            }
-
             //A PLAY_NEW_AUDIO action received
             //reset mediaPlayer to play the new Audio
             stopMedia();
@@ -470,19 +453,6 @@ public class AudioPlayerService extends Service implements
     }
 
     private void skipToNext() {
-
-        if (audioIndex == audioList.size() - 1) {
-            //if last in playlist
-            audioIndex = 0;
-            activeAudio = audioList.get(audioIndex);
-        } else {
-            //get next in playlist
-            activeAudio = audioList.get(++audioIndex);
-        }
-
-        //Update stored index
-        new StorageUtil(getApplicationContext()).storeAudioIndex(audioIndex);
-
         stopMedia();
         //reset mediaPlayer
         mediaPlayer.reset();
@@ -490,20 +460,6 @@ public class AudioPlayerService extends Service implements
     }
 
     private void skipToPrevious() {
-
-        if (audioIndex == 0) {
-            //if first in playlist
-            //set index to the last of audioList
-            audioIndex = audioList.size() - 1;
-            activeAudio = audioList.get(audioIndex);
-        } else {
-            //get previous in playlist
-            activeAudio = audioList.get(--audioIndex);
-        }
-
-        //Update stored index
-        new StorageUtil(getApplicationContext()).storeAudioIndex(audioIndex);
-
         stopMedia();
         //reset mediaPlayer
         mediaPlayer.reset();
